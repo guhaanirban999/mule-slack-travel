@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+  http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+    <configuration-properties doc:name="Configuration Properties" doc:id="config-properties-id" file="config.yaml" doc:description="Loads application configuration from config.yaml" />
+
+    <!-- Inbound listener for Slack slash-command requests -->
+    <http:listener-config name="api-httpListenerConfig" doc:name="HTTP Listener Config" doc:id="api-httpListenerConfig-id">
+        <http:listener-connection host="0.0.0.0" port="${http.port}" />
+    </http:listener-config>
+
+    <!-- Outbound call to the Travel Agent Broker (public HTTPS; JVM default trust store) -->
+    <http:request-config name="broker-httpRequestConfig" doc:name="Broker HTTP Request Config" doc:id="broker-httpRequestConfig-id">
+        <http:request-connection host="${broker.host}" port="${broker.port}" protocol="HTTPS" />
+    </http:request-config>
+
+    <!-- Outbound callback to the Slack response_url (host supplied at runtime via the url attribute) -->
+    <http:request-config name="slack-callback-httpRequestConfig" doc:name="Slack Callback HTTP Request Config" doc:id="slack-callback-httpRequestConfig-id">
+        <http:request-connection />
+    </http:request-config>
+
+</mule>

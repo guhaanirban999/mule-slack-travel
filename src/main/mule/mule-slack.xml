@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+  http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd
+  http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+
+  <flow name="slack-travel-flow" doc:id="slack-travel-flow-id" doc:name="Slack Travel Flow" doc:description="Handles Slack /travel slash command: ACKs immediately, processes asynchronously">
+    <http:listener doc:name="HTTP Listener" doc:id="http-listener-id" config-ref="api-httpListenerConfig" path="/slack/travel" allowedMethods="POST" doc:description="Receives Slack travel slash-command POSTs (application/x-www-form-urlencoded)" />
+
+    <!-- Convert the URL-encoded Slack body into the DataWeave (dw) format, then read fields off it -->
+    <ee:transform doc:name="Parse Slack Form" doc:id="parse-slack-form-id">
+      <ee:variables>
+        <ee:set-variable variableName="slackForm"><![CDATA[%dw 2.0
+output application/dw
+---
+payload]]></ee:set-variable>
+      </ee:variables>
+    </ee:transform>
+
+    <!-- Capture the decoded Slack fields from the parsed form -->
+    <set-variable doc:name="Set userRequest" doc:id="set-userRequest-id" variableName="userRequest" value="#[vars.slackForm.text default '']" doc:description="Stores the Slack request text" />
+    <set-variable doc:name="Set responseUrl" doc:id="set-responseUrl-id" variableName="responseUrl" value="#[vars.slackForm.response_url default '']" doc:description="Stores the Slack response_url callback for the async reply" />
+
+    <!-- Fork the slow broker call so the listener can ACK within Slack's 3s window -->
+    <async doc:name="Async Scope" doc:id="async-scope-id" doc:description="Runs broker processing off the request thread">
+      <flow-ref doc:name="Process Travel Request Async" doc:id="flowref-process-async-id" name="sf-processTravelRequestAsync" />
+    </async>
+
+    <!-- Immediate acknowledgement returned to Slack (main flow path = listener response) -->
+    <ee:transform doc:name="Immediate Slack Acknowledgement" doc:id="acknowledge-response-id" doc:description="Builds the ephemeral 'searching' ACK">
+      <ee:message>
+        <ee:set-payload>
+          <![CDATA[%dw 2.0
+output application/json
+---
+{
+  response_type: "ephemeral",
+  text: "Searching for your travel options..."
+}]]>
+        </ee:set-payload>
+      </ee:message>
+    </ee:transform>
+  </flow>
+
+  <sub-flow name="sf-processTravelRequestAsync" doc:id="sf-processTravelRequestAsync-id" doc:name="Process Travel Request Async" doc:description="Calls the broker and posts the result to the Slack response_url">
+    <try doc:name="Try" doc:id="try-block-id" doc:description="Sends a fallback Slack message if the broker call fails">
+      <flow-ref doc:name="Build Broker JSON-RPC Request" doc:id="flowref-build-jsonrpc-id" name="sf-buildBrokerJsonRpcRequest" />
+
+      <http:request method="POST" doc:name="Send Request to Broker" doc:id="broker-request-id" config-ref="broker-httpRequestConfig" path="/travel-agent-broker" responseTimeout="180000" doc:description="Calls the Travel Agent Broker (A2A JSON-RPC 2.0)">
+        <http:headers>
+          <![CDATA[#[{ "Content-Type": "application/json" }]]]>
+        </http:headers>
+      </http:request>
+
+      <flow-ref doc:name="Build Slack Response JSON" doc:id="flowref-build-slack-json-id" name="sf-buildSlackResponseJson" />
+
+      <http:request method="POST" doc:name="Send Response to Slack" doc:id="slack-response-id" config-ref="slack-callback-httpRequestConfig" url="#[vars.responseUrl]" doc:description="Posts the broker result to the Slack response_url callback">
+        <http:headers>
+          <![CDATA[#[{ "Content-Type": "application/json" }]]]>
+        </http:headers>
+      </http:request>
+
+      <error-handler doc:name="Error Handler">
+        <on-error-continue doc:name="On Error Continue" doc:id="on-error-continue-id" doc:description="Notifies the Slack user when the broker is unreachable">
+          <ee:transform doc:name="Fallback Payload" doc:id="fallback-payload-id">
+            <ee:message>
+              <ee:set-payload>
+                <![CDATA[%dw 2.0
+output application/json
+---
+{
+  response_type: "in_channel",
+  text: "Sorry, the travel agent could not be reached. Please try again."
+}]]>
+              </ee:set-payload>
+            </ee:message>
+          </ee:transform>
+
+          <http:request method="POST" doc:name="Fallback Response to Slack" doc:id="fallback-response-id" config-ref="slack-callback-httpRequestConfig" url="#[vars.responseUrl]" doc:description="Posts the fallback error message to the Slack response_url">
+            <http:headers>
+              <![CDATA[#[{ "Content-Type": "application/json" }]]]>
+            </http:headers>
+          </http:request>
+        </on-error-continue>
+      </error-handler>
+    </try>
+  </sub-flow>
+
+  <sub-flow name="sf-buildBrokerJsonRpcRequest" doc:id="sf-buildBrokerJsonRpcRequest-id" doc:name="Build Broker JSON-RPC Request" doc:description="Builds the A2A JSON-RPC 2.0 message/send body from the Slack request text">
+    <ee:transform doc:name="Transform to Broker JSON-RPC Request" doc:id="transform-to-jsonrpc-id">
+      <ee:message>
+        <ee:set-payload>
+          <![CDATA[%dw 2.0
+output application/json
+---
+{
+  jsonrpc: "2.0",
+  id: correlationId,
+  method: "message/send",
+  params: {
+    message: {
+      kind: "message",
+      role: "user",
+      messageId: correlationId,
+      parts: [
+        { kind: "text", text: vars.userRequest }
+      ]
+    }
+  }
+}]]>
+        </ee:set-payload>
+      </ee:message>
+    </ee:transform>
+  </sub-flow>
+
+  <sub-flow name="sf-buildSlackResponseJson" doc:id="sf-buildSlackResponseJson-id" doc:name="Build Slack Response JSON" doc:description="Extracts the broker answer (completed artifact or input-required message) into a Slack message">
+    <ee:transform doc:name="Transform Broker Response for Slack" doc:id="transform-broker-response-id">
+      <ee:message>
+        <ee:set-payload>
+          <![CDATA[%dw 2.0
+output application/json
+var artifacts = payload.result.artifacts default []
+var artText = if (sizeOf(artifacts) > 0) artifacts[0].parts[0].text else null
+var msgText = payload.result.status.message.parts[0].text default null
+---
+{
+  response_type: "in_channel",
+  text: (artText default msgText default "No response from the travel agent.")
+}]]>
+        </ee:set-payload>
+      </ee:message>
+    </ee:transform>
+  </sub-flow>
+
+</mule>

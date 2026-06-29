@@ -1,0 +1,7 @@
+{
+  "name": "mule-slack",
+  "minMuleVersion": "4.11.2",
+  "javaSpecificationVersions": [
+    "17"
+  ]
+}

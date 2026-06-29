@@ -1,0 +1,43 @@
+# Maven
+
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+
+# Mule
+.mule/
+.tooling/
+.tooling-apps-cache/
+.studio/
+.classpath
+.project
+.settings/
+
+# IDE
+*.iml
+.idea/
+.factorypath
+.vscode/
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Build
+*.class
+*.jar
+*.war
+*.ear
+*.logs
+*.zip
+*.tar.gz
+*.rar
+*.d.ts
+*.js.map
+.tooling-project/

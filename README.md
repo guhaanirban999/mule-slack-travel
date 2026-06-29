@@ -53,8 +53,40 @@ mvn clean package
 ```
 
 Deploy the resulting `target/*-mule-application.jar` to CloudHub 2.0 (or run on a local
-Mule 4.11 runtime). Then point the Slack app's `/travel` slash command at
-`https://<your-app-host>/slack/travel` (see `slack-app-manifest.yaml` in the broker repo).
+Mule 4.11 runtime), then connect a Slack app to it (see **Slack App Setup** below).
+
+## Slack App Setup
+
+This app is the HTTP backend for a Slack `/travel` slash command. A ready-to-use Slack
+app manifest lives in the companion broker repo:
+[`slack-app-manifest.yaml`](https://github.com/guhaanirban999/mulesoft-agent-fabric-travel-demo/blob/main/slack-app-manifest.yaml).
+
+1. **Deploy this app first** and note its public base URL, e.g.
+   `https://mule-slack-travel-8u1hpn.5sc6y6-4.usa-e2.cloudhub.io`. The Slack endpoint is
+   that host + `/slack/travel`.
+2. In the manifest, set the slash command `url` to `https://<your-app-host>/slack/travel`
+   (it currently points at the deployed app above).
+3. Go to <https://api.slack.com/apps> → **Create New App** → **From an app manifest**,
+   pick your workspace, and paste the contents of the manifest.
+4. **Install to Workspace** and approve the requested bot scopes
+   (`commands`, `chat:write`, `chat:write.public`, `channels:read`, `im:write`).
+5. If you change the app URL later, update the manifest (**App Manifest** page) or the
+   **Slash Commands** page, then **reinstall** the app so Slack picks up the new URL.
+
+### Using it
+
+In any channel:
+
+```
+/travel find me flights from San Francisco to New York on June 28th 2027
+```
+
+You'll see an immediate ephemeral **"Searching for your travel options…"**, then the
+flight/hotel results posted to the channel ~10–30s later once the broker responds.
+
+> **Note:** the slash command is single-turn — Slack interactivity is disabled in the
+> manifest (`interactivity.is_enabled: false`), so the app relays the broker's answer
+> (or its follow-up question) as a one-shot message rather than a back-and-forth.
 
 ## Test locally
 

@@ -1,5 +1,7 @@
 # mule-slack-travel
 
+**Repository:** https://github.com/guhaanirban999/mule-slack-travel
+
 A Mule 4 integration app that bridges a **Slack `/travel` slash command** to a
 **Travel Agent Broker** (A2A JSON-RPC 2.0) using the **async Slack response pattern**.
 
